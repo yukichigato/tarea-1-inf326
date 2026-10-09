@@ -1,0 +1,29 @@
+# Claude Code
+CLAUDE.md
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+.env
+
+# Herramientas y cachés
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editores y sistema
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,100 @@
+[
+  {
+    "id": "csn-385887",
+    "latitud": -36.1,
+    "longitud": -71.84,
+    "fecha_utc": "2026-10-08T22:25:46Z",
+    "fecha_local": "2026-10-08T19:25:46-03:00",
+    "profundidad_km": 74.0,
+    "magnitud": 2.5,
+    "tipo_magnitud": "MLv",
+    "referencia": "36 km al SO de Linares",
+    "fuente_url": "https://www.sismologia.cl/sismicidad/informes/2026/10/385887.html"
+  },
+  {
+    "id": "csn-385885",
+    "latitud": -18.5,
+    "longitud": -70.83,
+    "fecha_utc": "2026-10-08T22:14:17Z",
+    "fecha_local": "2026-10-08T19:14:17-03:00",
+    "profundidad_km": 42.0,
+    "magnitud": 2.5,
+    "tipo_magnitud": "MLv",
+    "referencia": "53 km al O de Arica",
+    "fuente_url": "https://www.sismologia.cl/sismicidad/informes/2026/10/385885.html"
+  },
+  {
+    "id": "csn-385851",
+    "latitud": -28.61,
+    "longitud": -71.17,
+    "fecha_utc": "2026-10-08T18:35:15Z",
+    "fecha_local": "2026-10-08T15:35:15-03:00",
+    "profundidad_km": 56.0,
+    "magnitud": 3.6,
+    "tipo_magnitud": "MLv",
+    "referencia": "17 km al S de Huasco",
+    "fuente_url": "https://www.sismologia.cl/sismicidad/informes/2026/10/385851.html"
+  },
+  {
+    "id": "csn-385813",
+    "latitud": -24.02,
+    "longitud": -67.35,
+    "fecha_utc": "2026-10-08T13:27:39Z",
+    "fecha_local": "2026-10-08T10:27:39-03:00",
+    "profundidad_km": 192.0,
+    "magnitud": 3.1,
+    "tipo_magnitud": "MLv",
+    "referencia": "73 km al SE de Socaire",
+    "fuente_url": "https://www.sismologia.cl/sismicidad/informes/2026/10/385813.html"
+  },
+  {
+    "id": "sim-001",
+    "latitud": -33.05,
+    "longitud": -71.62,
+    "fecha_utc": "2026-10-01T12:00:00Z",
+    "profundidad_km": 30.0,
+    "magnitud": 5.1,
+    "tipo_magnitud": "Mw",
+    "referencia": "Evento ficticio de prueba cerca de Valparaíso"
+  },
+  {
+    "id": "sim-002",
+    "latitud": -45.5,
+    "longitud": -72.0,
+    "fecha_utc": "2026-10-02T08:30:00Z",
+    "profundidad_km": 15.0,
+    "magnitud": 4.2,
+    "tipo_magnitud": "Mw",
+    "referencia": "Evento ficticio de prueba en Aysén, a más de 500 km de todas las ciudades"
+  },
+  {
+    "id": "sim-003",
+    "latitud": -52.5,
+    "longitud": -71.0,
+    "fecha_utc": "2026-10-03T17:45:00Z",
+    "profundidad_km": 10.0,
+    "magnitud": 3.8,
+    "tipo_magnitud": "Ml",
+    "referencia": "Evento ficticio de prueba cerca de Punta Arenas"
+  },
+  {
+    "id": "sim-004",
+    "latitud": -22.9,
+    "longitud": -70.3,
+    "fecha_utc": "2026-10-04T03:10:00Z",
+    "profundidad_km": 40.0,
+    "magnitud": 4.5,
+    "tipo_magnitud": "Mw",
+    "referencia": "Evento ficticio de prueba a unos 490 km al S de Arica (bajo el umbral)"
+  },
+  {
+    "id": "sim-005",
+    "latitud": -23.08,
+    "longitud": -70.3,
+    "fecha_utc": "2026-10-05T21:20:00Z",
+    "profundidad_km": 40.0,
+    "magnitud": 4.5,
+    "tipo_magnitud": "Mw",
+    "referencia": "Evento ficticio de prueba a unos 510 km al S de Arica (sobre el umbral)"
+  }
+]

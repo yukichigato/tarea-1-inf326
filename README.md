@@ -136,7 +136,8 @@ python -m publisher.publish sim-001           # publicar
   - El servicio HTTP escucha en `127.0.0.1:8000`.
   - Los suscriptores consultan `http://localhost:8000`; para usar otra URL se define la variable de entorno `SISMOS_API_URL`.
 - **RabbitMQ:**
-  - La integración se probó con la imagen `rabbitmq:3.13-management`. No se probó con RabbitMQ 4.x.
+  - La integración se probó con la imagen `rabbitmq:3.13-management`.
+  - También se probó el flujo completo, con los componentes iniciados por separado y sin `levantar`, con `rabbitmq:4-management`. En WSL, esa imagen requirió la opción `--user rabbitmq`.
   - Si aparece un error de permisos sobre `.erlang.cookie` (`eacces`), que ocurre en algunos entornos Docker, se puede agregar la opción `--user rabbitmq` al comando `docker run`.
   - Para eliminar el contenedor: `docker rm -f rabbitmq-sismos`.
 - **Publisher:** valida el dataset completo antes de conectarse y solo publica ids que existen en él.

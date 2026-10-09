@@ -109,6 +109,33 @@ Las garantías descritas son las de la implementación actual (`CONTRATOS.md`, s
   - A cambio, hay que operar más procesos y hay más puntos de falla.
   - Para cinco ciudades es más infraestructura de la estrictamente necesaria, pero es la arquitectura que pide el enunciado, y las colas durables evitan que un suscriptor detenido afecte al resto.
 
+### 1.8 RabbitMQ como punto único de falla
+
+- **Decisión:** una sola instancia de RabbitMQ, sin clúster ni réplicas.
+- **Alternativa:** un clúster de RabbitMQ con colas replicadas (*quorum queues*), o que el publisher avise directamente a cada suscriptor.
+- **Ventajas:**
+  - Es la configuración más simple de levantar y operar: un contenedor.
+  - El broker es lo que desacopla al publisher de los suscriptores (ver 1.2 y 1.3).
+- **Costos:**
+  - Si el broker cae, **ningún** aviso llega a ninguna ciudad. El publisher no puede conectarse y termina con error.
+  - Los suscriptores terminan con código 1 ante un error de RabbitMQ y no se reconectan solos; con `levantar`, eso detiene todo el sistema.
+  - Al reiniciar el broker se conservan las colas, los bindings y los mensajes persistentes ya escritos en disco (ver 1.3). Lo publicado mientras estaba caído no se recupera.
+- **En este dominio:** es de consideración. Un fallo del broker es el único que deja a las cinco ciudades sin avisos a la vez.
+- **Mejora posible:** reconexión automática en los suscriptores y un clúster con *quorum queues*.
+
+### 1.9 Datos en memoria cargados desde un archivo
+
+- **Decisión:** el servicio HTTP carga `data/sismos.json` en memoria al iniciar. No usa base de datos ni ofrece `POST`, porque el enunciado asume que la información ya está en el servicio.
+- **Alternativa:** una base de datos y un endpoint para registrar sismos nuevos.
+- **Ventajas:**
+  - No hay infraestructura adicional y las consultas son lecturas en memoria.
+  - Reiniciar el servicio **no pierde datos**, porque el archivo es la fuente y se vuelve a cargar al arrancar.
+- **Costos:**
+  - No se pueden agregar ni corregir sismos con el servicio en ejecución. Cualquier cambio en el archivo exige reiniciarlo.
+  - Si el CSN revisa los valores de un informe, el dataset no se actualiza solo.
+  - Mientras el servicio se reinicia, las ciudades interesadas descartan sus avisos (ver 1.4).
+- **En este dominio:** no es de consideración para la tarea, cuyo dataset es fijo. En un sistema real sí lo sería, porque los sismos se registran continuamente y el servicio no puede detenerse para cargar cada uno.
+
 ## 2. Back of the Envelope
 
 El enunciado pide **no calcular**, sino explicar cómo se podría estimar el uso del sistema con lo que se sabe del fenómeno (los sismos en Chile) y cómo esa estimación justifica la arquitectura. Por eso esta sección define qué cantidades hay que estimar, de dónde salen los datos y cómo se combinan. No entrega cifras.

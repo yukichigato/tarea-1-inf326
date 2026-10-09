@@ -2,7 +2,112 @@
 
 ## 1. Trade-offs de la arquitectura
 
-_(Sección a cargo de la persona B.)_
+Cada decisión se describe con:
+
+- la alternativa descartada,
+- lo que se gana,
+- lo que se acepta perder,
+- si ese costo es de consideración en el dominio: avisos de sismos a cinco ciudades.
+
+Las garantías descritas son las de la implementación actual (`CONTRATOS.md`, secciones 2.4 y 2.5). Lo marcado como **mejora posible** no está implementado.
+
+### 1.1 Evento mínimo y detalle por HTTP (pull)
+
+- **Decisión:** el publisher envía solo `{id, latitud, longitud}`. Cada suscriptor interesado pide el detalle con `GET /earthquakes/{id}`.
+- **Alternativa:** publicar el registro completo del sismo en el mensaje.
+- **Ventajas:**
+  - El mensaje lleva solo lo que todos los suscriptores usan: identificar el sismo y calcular la distancia.
+  - Las ciudades lejanas, que son la mayoría para cada evento, no reciben datos que no usarían.
+  - El detalle tiene una sola fuente, el servicio HTTP.
+- **Costos:**
+  - Cada ciudad interesada hace una petición HTTP adicional.
+  - Esa ciudad depende de que el servicio esté disponible. Si no lo está, descarta el aviso (ver 1.4).
+- **En este dominio:**
+  - El tráfico extra es acotado: un evento interesa como mucho a 3 de las 5 ciudades (sección 2.4), así que hay a lo más 3 peticiones por sismo.
+  - La dependencia del servicio sí importa, porque las ciudades que necesitan el detalle son las cercanas al epicentro.
+
+### 1.2 Exchange fanout y filtrado en cada suscriptor
+
+- **Decisión:** el exchange `sismos` (fanout) copia cada evento a las 5 colas. Cada suscriptor decide localmente si la distancia geodésica es menor que 500 km.
+- **Alternativa:** un exchange `topic` o `direct` con enrutamiento por región, o que el publisher calcule qué ciudades están interesadas.
+- **Ventajas:**
+  - El publisher no conoce a los suscriptores ni la regla de interés.
+  - Agregar una ciudad solo requiere una cola y un suscriptor nuevos, sin modificar el publisher.
+- **Costo:** cada evento llega a las 5 colas aunque la mayoría lo descarte, y cada suscriptor calcula la distancia.
+- **En este dominio:** no es de consideración. Con 5 ciudades y mensajes de tres campos, las copias extra son despreciables. Empezaría a importar con muchas más ciudades (sección 2.6).
+
+### 1.3 Colas durables por ciudad y mensajes persistentes
+
+- **Decisión:** cada ciudad tiene su propia cola durable, y los mensajes se publican como persistentes (`delivery_mode=2`).
+- **Alternativa:** colas temporales o exclusivas, que solo existen mientras el suscriptor está conectado.
+- **Ventajas:**
+  - Si un suscriptor se detiene, su cola conserva los avisos y los entrega cuando vuelve.
+  - Un suscriptor lento o detenido no afecta a los demás.
+- **Costos:**
+  - Los avisos acumulados se entregan atrasados y no vencen (no hay TTL).
+  - El mensaje no incluye la fecha del sismo, así que el suscriptor no puede saber, sin consultar HTTP, si un aviso es antiguo. Solo las ciudades interesadas ven la fecha en el detalle.
+  - Los mensajes publicados antes de que exista una cola se pierden; por eso el orden de arranque exige crear primero las colas.
+- **En este dominio:** es de consideración.
+  - Un aviso atrasado puede tener menos valor, o confundir si se presenta como reciente.
+  - Que convenga recibirlo tarde o descartarlo depende de cuánto tiempo haya pasado.
+  - **Mejora posible:** un TTL en las colas, o incluir la fecha en el evento para descartar avisos antiguos.
+
+### 1.4 Confirmación manual y descarte de mensajes fallidos
+
+- **Decisión:** el suscriptor confirma manualmente:
+  - `basic_ack` cuando el procesamiento termina bien;
+  - `basic_nack(requeue=False)` ante cualquier error: mensaje inválido, HTTP 404, servicio caído o timeout.
+
+  No hay reintentos ni dead-letter queue, así que el mensaje rechazado se descarta.
+- **Alternativa:** reencolar el mensaje, reintentar con espera, o derivarlo a una dead-letter queue.
+- **Ventajas:**
+  - Un mensaje inválido nunca queda reintentándose indefinidamente ni bloquea la cola.
+  - La política es simple y predecible.
+- **Costo:** un fallo transitorio (servicio HTTP caído o lento) hace que esa ciudad pierda definitivamente el detalle de ese sismo. Solo queda el registro en el log del suscriptor.
+- **En este dominio:** es uno de los costos más relevantes de la solución, porque afecta a la ciudad cercana justo cuando falla el servicio.
+- **Mejora posible:** una dead-letter queue, o un número acotado de reintentos solo para errores transitorios.
+
+### 1.5 Garantías de entrega: sin publisher confirms y con posibles duplicados
+
+- **Decisión:** el sistema no garantiza entrega de extremo a extremo:
+  - **Publicación:** no se usan *publisher confirms*. El publisher valida todo el dataset antes de conectarse, pero si la conexión con el broker falla a mitad del envío puede quedar una publicación parcial, sin que el publisher sepa con certeza qué mensajes aceptó el broker.
+  - **Consumo:** si un suscriptor se cae después de recibir un mensaje y antes de confirmarlo, RabbitMQ entrega de nuevo ese mensaje no confirmado. Esto puede producir **duplicados**: una segunda línea de log para el mismo sismo y, si la ciudad está a menos de 500 km, una segunda consulta HTTP. No hay deduplicación.
+- **Alternativa:** *publisher confirms* para saber qué mensajes aceptó el broker, y deduplicación por `id` en el suscriptor.
+- **Ventajas:**
+  - El código queda simple.
+  - Validar antes de conectar evita publicaciones parciales causadas por datos inválidos.
+- **Costos:**
+  - Puede perderse un aviso si el broker falla durante el envío.
+  - Pueden repetirse consultas y registros tras una caída del suscriptor.
+- **En este dominio:**
+  - Los duplicados tienen un efecto acotado: cada uno es una consulta HTTP de lectura más un aviso repetido en el log.
+  - Cuál pesa más depende del uso del aviso:
+    - un duplicado repite una consulta de lectura y un registro, pero quien consuma los avisos podría tomarlo como un segundo sismo;
+    - una pérdida deja a una ciudad sin el aviso, pero solo ocurre si el broker falla durante la publicación.
+- **Mejora posible:** *publisher confirms* y deduplicación por `id`.
+
+### 1.6 Timeout por operación y procesamiento secuencial
+
+- **Decisión:** cada suscriptor procesa un mensaje a la vez (`prefetch_count=1`). La petición HTTP usa `urlopen(..., timeout=5)`, que limita a 5 s **cada operación de red** (conectar o leer).
+- **Alternativa:** procesar varios mensajes en paralelo dentro del suscriptor, o no usar timeout.
+- **Ventajas:**
+  - El código es simple.
+  - Si el suscriptor se cae, se vuelve a entregar como máximo un mensaje: el que estaba sin confirmar.
+  - Un servicio que no responde no bloquea al suscriptor para siempre.
+- **Costos:**
+  - Mientras espera una respuesta, la ciudad no procesa los avisos siguientes.
+  - El timeout no es un límite para la duración total de la petición: si el servicio no responde, la espera ronda los 5 s, pero una respuesta que llega muy lentamente puede tardar más.
+- **En este dominio:** es de consideración en ráfagas de réplicas, cuando llegan muchos eventos de la misma zona. La sección 2.4 muestra cómo estimar cuándo empieza a crecer la cola (`λ_pico > 1/t_proc`).
+
+### 1.7 Simplificación y costo del desacoplamiento
+
+- **Simplificación:** el publisher toma los eventos de `data/sismos.json`, el mismo archivo que sirve el servicio HTTP.
+  - Así se puede demostrar el flujo completo con datos coherentes, como permite el enunciado al asumir que la información ya está en el servicio.
+  - El costo es que acopla el publisher al almacén del servicio, cuando la Figura 1 los muestra como componentes independientes.
+  - En un sistema real, la fuente de detección publicaría el evento y registraría el detalle por separado.
+- **Desacoplamiento:** separar publisher, broker, cinco suscriptores y servicio HTTP permite que cada parte falle o se reinicie por separado.
+  - A cambio, hay que operar más procesos y hay más puntos de falla.
+  - Para cinco ciudades es más infraestructura de la estrictamente necesaria, pero es la arquitectura que pide el enunciado, y las colas durables evitan que un suscriptor detenido afecte al resto.
 
 ## 2. Back of the Envelope
 
@@ -38,7 +143,7 @@ El enunciado pide **no calcular**, sino explicar cómo se podría estimar el uso
 | `N_s` | Número de suscriptores (colas) | 5, fijo |
 | `p_c` | Fracción de eventos a menos de 500 km de la ciudad `c` | Se recorre el catálogo histórico y se cuenta, con la misma distancia geodésica del suscriptor, cuántos eventos quedan bajo el umbral |
 | `S_req`, `S_resp` | Tamaño de la solicitud y de la respuesta HTTP | Se miden en una petición real a `GET /earthquakes/{id}` (cuerpo de 10 campos más encabezados HTTP y TCP) |
-| `t_proc` | Tiempo de procesamiento de un mensaje en un suscriptor | Se mide en los logs: cálculo de distancia más, si corresponde, el tiempo de la petición HTTP (con un tope de 5 s por timeout) |
+| `t_proc` | Tiempo de procesamiento de un mensaje en un suscriptor | Se mide en los logs: cálculo de distancia más, si corresponde, el tiempo de la petición HTTP (el timeout de 5 s se aplica a cada operación de red, conectar o leer, y no limita la duración total) |
 
 ### 2.4 Cómo se combinan
 
@@ -66,7 +171,7 @@ B_http = R · (S_req + S_resp)
 - Con `prefetch_count=1`, cada suscriptor procesa un mensaje a la vez, así que su capacidad es de unos `1 / t_proc` mensajes por segundo.
 - Mientras `λ_pico < 1 / t_proc`, las colas no crecen.
 - Si se supera ese valor, la cola crece aproximadamente a razón de `λ_pico − 1/t_proc`.
-- El peor caso de `t_proc` es el timeout HTTP de 5 s.
+- Si el servicio HTTP no responde, `t_proc` ronda los 5 s del timeout. No es un tope estricto, porque el timeout se aplica a cada operación de red.
 
 **Acumulación durante fallas.**
 
@@ -79,7 +184,7 @@ El promedio no basta para dimensionar el sistema, porque los sismos llegan agrup
 
 - **Temporal.** Después de un sismo grande, la tasa de réplicas puede superar en órdenes de magnitud a la de un día normal y decae en horas o días (Omori). El sistema debe dimensionarse con `λ_pico` y no con `λ`. Las colas durables absorben ráfagas cortas aunque los suscriptores sean más lentos por un rato.
 - **Espacial.** Las réplicas se concentran cerca del epicentro principal. Durante una secuencia, `p_c` se acerca a 1 en las ciudades cercanas y a 0 en las lejanas. Por eso la carga HTTP del peor caso es `λ_pico` multiplicado por la cantidad de ciudades cercanas a esa zona, que es como mucho 3 y no 5.
-- **Correlación con el interés.** Los momentos de mayor carga coinciden con los momentos en que la información más importa. Por eso la estimación del pico, y no la del promedio, debe guiar el timeout, la política de reintentos y la capacidad del servicio HTTP.
+- **Correlación con el interés.** Los momentos de mayor carga coinciden con los momentos en que la información más importa. Por eso la estimación del pico, y no la del promedio, debe guiar el timeout, la decisión de incorporar reintentos (hoy no existen; ver 1.4) y la capacidad del servicio HTTP.
 
 ### 2.6 Cómo esta estimación justifica la arquitectura
 

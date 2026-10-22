@@ -12,8 +12,8 @@ Los contratos entre componentes (dataset, mensaje, topología y endpoint) están
 
 | Nombre | Rol |
 |---|---|
-| _(completar)_ | _(completar)_ |
-| _(completar)_ | _(completar)_ |
+| Andrés Araya Díaz | 202287004-4 |
+| Baltazar Portilla Reyes | 202173112-1 |
 
 ## Ejecución
 
